@@ -1,0 +1,50 @@
+---
+- name: Развернуть Flask-приложение из репозитория practice_rut_miit
+  hosts: web_servers
+  become: yes
+  vars:
+    repo_url: "https://github.com/ivan-timonin/practice_rut_miit.git"
+    app_dir: "/opt/practice_rut_miit"
+    image_name: "flask-hello-world:latest"
+    instances: 2  # сколько контейнеров запустить
+
+  tasks:
+    - name: Установить Docker (Ubuntu/Debian)
+      apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Запустить и включить Docker
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Клонировать репозиторий
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: main
+        force: yes
+
+    - name: Собрать Docker-образ
+      docker_image:
+        name: "{{ image_name }}"
+        build:
+          path: "{{ app_dir }}/practice_rut_miit"  # путь к Dockerfile внутри репозитория
+        source: build
+        force_source: yes
+
+    - name: Запустить контейнеры
+      docker_container:
+        name: "flask-hello-{{ item }}"
+        image: "{{ image_name }}"
+        state: started
+        restart_policy: always
+        ports:
+          - "{{ 5000 + item | int }}:5000"
+      loop: "{{ range(0, instances) | list }}"
